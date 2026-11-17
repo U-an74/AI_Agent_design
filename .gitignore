@@ -12,12 +12,10 @@ __pycache__/
 !.env.example
 
 # Firebase service account keys
+/secrets/
 serviceAccountKey.json
 firebase-service-account.json
 *-firebase-adminsdk-*.json
-
-# Secret files
-/secrets/
 
 # IDE and OS files
 .idea/
