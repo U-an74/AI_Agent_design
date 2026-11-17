@@ -16,6 +16,9 @@ serviceAccountKey.json
 firebase-service-account.json
 *-firebase-adminsdk-*.json
 
+# Secret files
+/secrets/
+
 # IDE and OS files
 .idea/
 .DS_Store
