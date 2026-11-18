@@ -9,7 +9,8 @@ from firebase import db
 
 from collections import Counter
 from statistics import mean
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Literal
 
 
 app = FastAPI(
@@ -63,8 +64,36 @@ class LifestyleDataResponse(LifestyleData):
     id: str
 
 
+# 9. 대화 기록 데이터 모델
+
+# 개별 메시지 모델
+class ConversationMessage(BaseModel):
+    role: Literal["user", "assistant"] = Field(
+        description="메시지 작성자 (user 또는 assistant)"
+    )
+    content: str = Field(
+        min_length=1,
+        description="대화 메시지 내용"
+    )
+
+
+# 대화 저장 요청 모델
+class ConversationCreate(BaseModel):
+    title: str = Field(
+        min_length=1,
+        max_length=100,
+        description="대화 제목"
+    )
+    messages: list[ConversationMessage] = Field(
+        min_length=1,
+        description="대화 메시지 목록"
+    )
+
+
+
 # Firestore 컬렉션 지정
 data_collection = db.collection("data")
+conversation_collection = db.collection("conversations")
 
 
 # 3. 서버 상태 확인
@@ -309,4 +338,111 @@ def get_data_summary():
             "difference_percentage_points": rate_difference,
             "trend": bedtime_trend
         }
+    }
+
+
+
+# 9. 대화 기록 저장 (CREATE)
+@app.post("/api/conversations", status_code=201)
+def create_conversation(data: ConversationCreate):
+
+    # 현재 시간 생성
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Firestore 자동 문서 ID 생성
+    doc_ref = conversation_collection.document()
+
+    # 대화 데이터 저장
+    conversation_data = {
+        "title": data.title.strip(),
+        "created_at": now,
+        "updated_at": now,
+        "messages": [
+            message.model_dump()
+            for message in data.messages
+        ]
+    }
+
+    doc_ref.set(conversation_data)
+
+    return {
+        "id": doc_ref.id,
+        **conversation_data
+    }
+
+# 10. 대화 기록 목록 조회 (READ)
+@app.get("/api/conversations")
+def get_conversations():
+
+    # Firestore에 저장된 모든 대화 기록 조회
+    docs = conversation_collection.stream()
+
+    conversations = []
+
+    for doc in docs:
+        conversation_data = doc.to_dict()
+
+        conversations.append({
+            "id": doc.id,
+            "title": conversation_data.get("title"),
+            "created_at": conversation_data.get("created_at"),
+            "updated_at": conversation_data.get("updated_at"),
+            "message_count": len(conversation_data.get("messages", []))
+        })
+
+    # 최근 수정된 대화가 먼저 오도록 정렬
+    conversations.sort(
+        key=lambda item: item["updated_at"] or "",
+        reverse=True
+    )
+
+    return {
+        "total_count": len(conversations),
+        "conversations": conversations
+    }
+
+# 개별 대화 기록 조회 (READ)
+@app.get("/api/conversations/{conversation_id}")
+def get_conversation(conversation_id: str):
+
+    # Firestore에서 해당 문서 조회
+    doc = conversation_collection.document(conversation_id).get()
+
+    # 문서가 존재하지 않는 경우
+    if not doc.exists:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found"
+        )
+
+    # 대화 데이터 반환
+    return {
+        "id": doc.id,
+        **doc.to_dict()
+    }
+
+
+    # 대화 기록 삭제 (DELETE)
+@app.delete("/api/conversations/{conversation_id}")
+def delete_conversation(conversation_id: str):
+
+    # Firestore 문서 참조
+    doc_ref = conversation_collection.document(conversation_id)
+
+    # 문서 존재 여부 확인
+    doc = doc_ref.get()
+
+    # 문서가 존재하지 않는 경우
+    if not doc.exists:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found"
+        )
+
+    # 대화 기록 삭제
+    doc_ref.delete()
+
+    return {
+        "message": "Conversation deleted successfully",
+        "id": conversation_id
     }
