@@ -549,10 +549,15 @@ def chat(request: ChatRequest):
                 },
                 *ai_input
             ],
-            max_tokens=500
+            max_tokens=1200
         )
 
-        ai_answer = response.choices[0].message.content
+
+        # AI 답변 및 종료 이유 확인
+        choice = response.choices[0]
+        ai_answer = choice.message.content
+
+        print(f"[GPT FINISH REASON] {choice.finish_reason}")
 
         if not ai_answer:
             raise HTTPException(
