@@ -12,6 +12,21 @@ from statistics import mean
 from datetime import datetime, timezone
 from typing import Literal
 
+import os
+from openai import OpenAI, OpenAIError
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+openai_client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    timeout=30.0,
+    max_retries=1,
+)
+
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4")
+
 
 app = FastAPI(
     title="AI Lifestyle Manager API",
@@ -89,6 +104,17 @@ class ConversationCreate(BaseModel):
         description="대화 메시지 목록"
     )
 
+# 10. AI 채팅 요청 모델
+class ChatRequest(BaseModel):
+    message: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="사용자 질문"
+    )
+    conversation_id: str | None = Field(
+        default=None,
+        description="기존 대화 ID (새 대화는 생략)"
+    )
 
 
 # Firestore 컬렉션 지정
@@ -445,4 +471,127 @@ def delete_conversation(conversation_id: str):
     return {
         "message": "Conversation deleted successfully",
         "id": conversation_id
+    }
+
+
+# 10. GPT API 및 컨텍스트 주입
+@app.post("/api/chat")
+def chat(request: ChatRequest):
+
+    # 1. 기존 데이터 요약 함수 재사용
+    summary = get_data_summary()
+
+    # 2. 시스템 프롬프트 구성
+    system_prompt = f"""
+당신은 AI 생활습관 매니저입니다.
+
+사용자의 수면 및 운동 기록을 분석하여
+친절하고 실용적인 답변을 한국어로 제공하세요.
+
+[사용자 생활습관 데이터 요약]
+{summary}
+
+[답변 원칙]
+1. 실제 데이터에 근거하여 답변하세요.
+2. 수면 시간, 운동 시간, 취침 패턴을 활용하세요.
+3. 데이터에 없는 정보는 추측하지 마세요.
+4. 개선이 필요한 부분은 구체적으로 설명하세요.
+5. 의료적 진단이나 확정적인 건강 판단은 하지 마세요.
+6. 답변은 이해하기 쉽게 작성하세요.
+"""
+
+    # 3. 신규 대화 또는 기존 대화 확인
+    now = datetime.now(timezone.utc).isoformat()
+
+    if request.conversation_id:
+        doc_ref = conversation_collection.document(
+            request.conversation_id
+        )
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            raise HTTPException(
+                status_code=404,
+                detail="대화 기록을 찾을 수 없습니다."
+            )
+
+        conversation = doc.to_dict()
+        messages = conversation.get("messages", [])
+
+    else:
+        doc_ref = conversation_collection.document()
+        messages = []
+
+        conversation = {
+            "title": request.message[:50],
+            "created_at": now,
+            "updated_at": now,
+            "messages": []
+        }
+
+    # 4. 이전 대화와 현재 질문 구성
+    user_message = {
+        "role": "user",
+        "content": request.message
+    }
+
+    ai_input = messages[-10:] + [user_message]
+
+
+    # 5. OpenAI Chat Completions API 호출
+    try:
+        response = openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                *ai_input
+            ],
+            max_tokens=500
+        )
+
+        ai_answer = response.choices[0].message.content
+
+        if not ai_answer:
+            raise HTTPException(
+                status_code=502,
+                detail="AI 응답 내용이 비어 있습니다."
+            )
+
+
+    except OpenAIError as e:
+        print(f"[OpenAI API ERROR] {type(e).__name__}")
+
+        if hasattr(e, "status_code"):
+            print(f"STATUS CODE: {e.status_code}")
+
+        if hasattr(e, "body"):
+            print(f"ERROR BODY: {e.body}")
+
+        raise HTTPException(
+            status_code=502,
+            detail="AI 서비스 호출에 실패했습니다."
+        )
+
+
+    # 6. 사용자 질문과 AI 답변 추가
+    messages.append(user_message)
+    messages.append({
+        "role": "assistant",
+        "content": ai_answer
+    })
+
+    # 7. Firestore에 대화 자동 저장
+    conversation["messages"] = messages
+    conversation["updated_at"] = now
+
+    doc_ref.set(conversation)
+
+    # 8. 프론트엔드에 결과 반환
+    return {
+        "conversation_id": doc_ref.id,
+        "answer": ai_answer,
+        "message_count": len(messages)
     }
