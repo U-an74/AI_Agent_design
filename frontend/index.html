@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="수면과 운동 기록을 분석하는 AI 생활습관 매니저">
+  <title>AI 생활습관 매니저</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./config.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">✳</span><div><strong>AI Lifestyle</strong><small>생활습관 매니저</small></div></div>
+      <div class="side-section">WORKSPACE</div>
+      <nav aria-label="주요 메뉴" class="nav">
+        <button class="nav-item active" data-tab="chat" aria-current="page">💬 <span>AI 채팅</span></button>
+        <button class="nav-item" data-tab="summary">📊 <span>데이터 요약</span></button>
+        <button class="nav-item" data-tab="data">🗂️ <span>데이터 관리</span></button>
+        <button class="nav-item" data-tab="history">🕘 <span>대화 기록</span></button>
+      </nav>
+      <div class="sidebar-bottom"><div class="status-dot"></div> Render API 연결 <small id="api-url-label">연결 확인 중</small></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar"><div><div class="eyebrow">PERSONAL DATA ASSISTANT</div><h1 id="page-title">AI 채팅</h1><p id="page-description">내 기록을 바탕으로 생활습관을 개선해 보세요.</p></div><button id="refresh-btn" class="btn secondary" type="button">↻ 새로고침</button></header>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+      <section id="tab-chat" class="panel tab-panel active" aria-labelledby="page-title">
+        <div class="section-heading"><div><h2>나만의 생활습관 AI</h2><p>저장된 수면·운동 기록의 요약을 참고해 답변합니다.</p></div><button class="btn secondary" id="new-chat" type="button">+ 새 대화</button></div>
+        <div class="mini-summary" id="chat-summary">데이터 요약을 불러오는 중...</div>
+        <div class="chat-messages" id="chat-messages" aria-live="polite"><div class="empty"><div class="empty-icon">✦</div><strong>어떤 습관이 궁금하세요?</strong><p>“내 최근 수면과 운동 습관을 분석해줘”처럼 질문해 보세요.</p></div></div>
+        <div id="chat-loading" class="loading-line" hidden><span class="spinner"></span><span>AI가 분석 중입니다. 무료 서버의 첫 연결에는 시간이 걸릴 수 있어요.</span></div>
+        <form id="chat-form" class="chat-form"><label for="chat-input" class="sr-only">질문 입력</label><textarea id="chat-input" rows="2" maxlength="2000" placeholder="생활습관에 대해 질문해 보세요..." required></textarea><button id="send-btn" class="btn primary" type="submit">전송 ↗</button></form>
+        <p class="helper">답변은 기록된 데이터를 바탕으로 생성되며 의학적 진단을 대신하지 않습니다.</p>
+      </section>
+
+      <section id="tab-summary" class="panel tab-panel" hidden>
+        <div class="section-heading"><div><h2>생활습관 요약</h2><p>현재 Firestore에 저장된 데이터를 분석합니다.</p></div><button class="btn secondary" id="summary-refresh" type="button">↻ 요약 갱신</button></div>
+        <div id="summary-content"><p class="muted">요약 데이터를 불러오는 중...</p></div>
+      </section>
+
+      <section id="tab-data" class="panel tab-panel" hidden>
+        <div class="section-heading"><div><h2>데이터 관리</h2><p>수면 및 운동 기록을 추가하거나 수정·삭제할 수 있습니다.</p></div><span class="count" id="data-count">0개 기록</span></div>
+        <form id="data-form" class="data-form">
+          <div class="form-title"><strong id="data-form-title">새 기록 추가</strong><button id="cancel-edit" class="link-btn" type="button" hidden>수정 취소</button></div>
+          <div class="form-grid">
+            <label>날짜<input name="date" type="date" required></label>
+            <label>취침 시각<input name="sleep_start_time" type="time" value="23:00" required></label>
+            <label>수면 시간(분)<input name="sleep_minutes" type="number" min="0" max="1440" value="420" required></label>
+            <label>운동 종류<select name="exercise_type" required><option value="없음">없음</option><option value="걷기">걷기</option><option value="러닝">러닝</option><option value="근력운동">근력운동</option><option value="요가">요가</option><option value="자전거">자전거</option><option value="기타">기타</option></select></label>
+            <label>운동 시간(분)<input name="exercise_minutes" type="number" min="0" max="1440" value="0" required></label>
+          </div>
+          <div class="form-actions"><button id="save-data" class="btn primary" type="submit">기록 추가</button><span class="helper">날짜는 중복 등록할 수 없습니다.</span></div>
+        </form>
+        <div class="table-heading"><h3>기록 목록</h3><label>검색 <input id="data-search" type="search" placeholder="날짜 또는 운동 종류"></label></div>
+        <div class="table-wrap"><table><thead><tr><th>날짜</th><th>취침</th><th>수면(분)</th><th>운동 종류</th><th>운동(분)</th><th>관리</th></tr></thead><tbody id="data-rows"><tr><td colspan="6">불러오는 중...</td></tr></tbody></table></div>
+      </section>
+
+      <section id="tab-history" class="panel tab-panel" hidden>
+        <div class="section-heading"><div><h2>대화 기록</h2><p>저장된 대화를 선택하면 채팅 화면에서 다시 볼 수 있습니다.</p></div><button class="btn secondary" id="history-refresh" type="button">↻ 목록 갱신</button></div>
+        <div id="history-list" class="history-list"><p class="muted">대화 기록을 불러오는 중...</p></div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
