@@ -21,3 +21,6 @@ firebase-service-account.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# Frontend build output
+/frontend/dist/
